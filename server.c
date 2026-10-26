@@ -62,12 +62,13 @@ static int create_listen_socket(int port)
 
 static void run_child(int listen_fd, int client_fd, struct sockaddr_in *caddr)
 {
-    (void)caddr;
     close(listen_fd);
     signal(SIGCHLD, SIG_DFL);
     signal(SIGTERM, SIG_DFL);
     signal(SIGINT, SIG_DFL);
     handle_client(client_fd);
+    printf("[pid %d] DISCONNECT %s:%d\n", (int)getpid(), inet_ntoa(caddr->sin_addr), ntohs(caddr->sin_port));
+    fflush(stdout);
     exit(0);                                   /* the OS releases every lock this process held */
 }
 
@@ -94,6 +95,8 @@ int main(int argc, char **argv)
             perror("accept");
             break;
         }
+        printf("CONNECT    %s:%d\n", inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
+        fflush(stdout);
         pid_t pid = fork();
         if (pid == 0) run_child(listen_fd, client_fd, &caddr);
         close(client_fd);

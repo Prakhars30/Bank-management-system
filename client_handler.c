@@ -1,6 +1,8 @@
 /* client_handler.c - one process per client: read lines, log in, revalidate, dispatch by role */
 #include <ctype.h>
+#include <arpa/inet.h>
 #include <errno.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -25,6 +27,16 @@ static void set_read_timeout(int fd, int seconds)
 {
     struct timeval tv = { seconds, 0 };
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+}
+
+/* server console log: "ip:port" of the client on fd */
+static const char *peer_of(int fd, char *out, size_t size)
+{
+    struct sockaddr_in a;
+    socklen_t len = sizeof a;
+    if (getpeername(fd, (struct sockaddr *)&a, &len) < 0) { snprintf(out, size, "?"); return out; }
+    snprintf(out, size, "%s:%d", inet_ntoa(a.sin_addr), ntohs(a.sin_port));
+    return out;
 }
 
 /* one line, without the newline; -1 on EOF or error (errno is 0 on EOF) */
@@ -90,11 +102,13 @@ static int cmd_login(int fd, char *args, Session *s)
 
     set_read_timeout(fd, IDLE_TIMEOUT_SECONDS);
     send_line(fd, "OK welcome %s (%s), try HELP", s->username, role_name(s->role));
+    { char pb[64]; printf("[pid %d] LOGIN      %s as '%s' (%s)\n", (int)getpid(), peer_of(fd, pb, sizeof pb), s->username, role_name(s->role)); fflush(stdout); }
     return 0;
 }
 
 static void cmd_logout(int fd, Session *s)
 {
+    { char pb[64]; printf("[pid %d] LOGOUT     %s '%s'\n", (int)getpid(), peer_of(fd, pb, sizeof pb), s->username); fflush(stdout); }
     if (s->holds_session_lock) session_release(s->user_id);
     memset(s, 0, sizeof *s);
     set_read_timeout(fd, LOGIN_TIMEOUT_SECONDS);

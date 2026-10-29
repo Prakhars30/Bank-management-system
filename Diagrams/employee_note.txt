@@ -1,0 +1,9 @@
+Loans: an employee only sees and processes loans assigned to them.
+APPROVE: peek at the loan (no lock) to learn its account id. Then lock the account, then the loan (global order). Re-read the loan under its lock; if it is no longer ASSIGNED to this employee with the same account, roll back with ERR loan changed. Otherwise credit the account, append the TxnRecord, set the loan to APPROVED, commit. A crash in the middle undoes all of it.
+APPROVE to a closed account gives ERR account closed, and to an inactive account ERR account inactive. The loan stays ASSIGNED, so the employee can still reject it.
+REJECT only changes the status, under the loan lock.
+No customer commands: an employee can't deposit or withdraw.
+ADDCUSTOMER(name, password): in one transaction, under the users table lock: refuse a duplicate username, append the user with role customer, take the accounts table lock, append an account with zero balance and status active.
+MODIFYCUSTOMER(user_id, field, value): allowed fields are password and username only. The target must have role customer, otherwise ERR not a customer. A username change checks uniqueness under the users table lock.
+FINDCUSTOMER(name): read-only lookup that returns user id, account id and status. It lets the employee find the account id needed by VIEWTXNS.
+VIEWTXNS(account_id): read-only, heals the transaction file first.

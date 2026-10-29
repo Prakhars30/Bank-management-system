@@ -1,0 +1,6 @@
+ACTIVATE / DEACTIVATE(account_id): sets status active or inactive under the account write lock. A closed account is refused (ERR account closed); closing is final and only DELETEACCOUNT does it.
+Deactivated account: refuses deposit, withdraw, transfer and incoming loan credit. The status check happens under the account lock, so a deactivation can't race with a withdrawal.
+LOANS_PENDING: lists PENDING loans only. A loan whose employee was deleted returns here.
+EMPLOYEES: lists active employees (id, username) so the manager knows which ids can be assigned.
+ASSIGN(loan_id, employee_id): read-lock the employee's user record and check role employee and active, then write-lock the loan (order users then loans), and accept it only if it is PENDING. Managers assign loans but never approve them.
+FEEDBACK_LIST: read-only, heals the feedback file first, newest first.

@@ -1,0 +1,7 @@
+DEPOSIT / WITHDRAW: write lock on the account, before-image, change balance, append TxnRecord, commit. WITHDRAW refuses if funds are too low. Amounts must be positive and the new balance must not overflow.
+BALANCE / DETAILS / HISTORY: read lock only. DETAILS shows the account id and holder ids, not names, because reading the users file while holding an account lock would break the lock order.
+TRANSFER: both accounts locked lowest id first, all three writes in one transaction. Transfer to your own account is refused. A closed or inactive target is refused.
+Joint account: the account is found by holder1_id or holder2_id at login and stored in the session. Inside EVERY command, under the account lock, the server re-checks that the session user is still holder1 or holder2 and that the status allows the command: active for money commands, any status for reads except that an account the user no longer holds is refused. If not: ERR not an account holder, ERR account closed or ERR account inactive. The user must log in again to pick up a changed account.
+LOAN_APPLY: appends a PENDING loan for the session's account. Refused if the account is not active.
+FEEDBACK: appends to feedback.bin under the append lock, 1 to 255 characters.
+PASSWD: checks the old password, then stores the new salted hash.

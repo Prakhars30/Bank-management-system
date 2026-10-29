@@ -1,0 +1,11 @@
+Admin scope: ADDUSER creates employees, managers and other admins (not customers; employees do that with ADDCUSTOMER). Admin gets no customer commands, so it can't move money.
+Every change to users.bin that affects uniqueness or the last-admin rule takes the users table lock first (ADDUSER, DELETEUSER, role change, username change). Duplicate usernames are refused under it. is_last_admin is checked under it too, so an admin can't delete or demote themselves or the last active admin, even if two admins try at once.
+DELETEUSER: soft delete. is_active becomes 0 and the record stays, so ids never move. Takes effect immediately: the user's next command fails revalidation and they are disconnected. Never blocked by an active session. In the same transaction:
+  - customer who is sole holder: refused with ERR balance must be zero unless the balance is zero; then the account becomes closed;
+  - customer in a joint account: that holder is removed (the remaining holder becomes holder1), the account stays open;
+  - employee with ASSIGNED loans: those loans go back to PENDING.
+MODIFYUSER(user_id, field, value): allowed fields are password, username, and role. Role can change only among employee, manager and admin; customers can't be promoted and staff can't become customers. Takes effect on the target's next command via revalidation.
+ADDACCOUNT(holder1, holder2): read-locks the holder user records, requires them to be active customers who hold no other non-closed account, then appends under the accounts table lock.
+MODIFYACCOUNT(account_id, field, value): allowed fields are holder1_id, holder2_id and status (active or inactive). Balance can never be edited. A holder change must pass the same one-account rule.
+DELETEACCOUNT: takes the account's write lock and checks the balance under it. A balance that isn't zero gives ERR balance must be zero. Otherwise the status becomes closed, and the customer's next deposit, withdraw or transfer gets ERR account closed. A transfer to a closed account is refused the same way. Deleting the account closes it for both holders.
+SEARCH users and accounts: read lock only, after healing the file.

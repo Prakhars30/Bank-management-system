@@ -1,0 +1,12 @@
+ids are record numbers (1, 2, 3...). They are never reused. Soft-deleted users keep their username reserved.
+Role: 1 customer, 2 employee, 3 manager, 4 admin.
+Account status: active, inactive or closed. Closed is final.
+Joint account: holder2_id is a second user, 0 if none. Either holder can log in. A user holds at most one non-closed account, so the session has a single account_id. holder1_id is never 0 on an open account. Closed accounts keep their holders for history.
+Loan status flow: PENDING, ASSIGNED, then APPROVED or REJECTED. ASSIGNED may return to PENDING only when its employee is deleted. Any other jump is refused.
+Journal phases: BEGIN, IMAGE (one per changed record), APPEND, COMMIT, ROLLBACK. One transaction can have many entries.
+before_image_128 holds a copy of one record. It is only needed for files changed in place: users, accounts, loans. UserRecord is exactly 128 bytes with normal padding, so any new field breaks it. Add _Static_assert(sizeof(UserRecord) <= 128), and the same for AccountRecord and LoanRecord. FeedbackRecord is bigger but append-only, so it needs no before-image.
+
+note for UserRecord "role: 1 customer, 2 employee, 3 manager, 4 admin. is_active 0 means soft-deleted. Must stay 128 bytes or less."
+  note for AccountRecord "status: active, inactive, closed (final). A user holds at most one non-closed account. holder2_id 0 means none."
+  note for LoanRecord "status: PENDING, ASSIGNED, APPROVED or REJECTED. ASSIGNED returns to PENDING only if its employee is deleted."
+  note for JournalEntry "phase: BEGIN, IMAGE, APPEND, COMMIT, ROLLBACK. Images only for users, accounts and loans."

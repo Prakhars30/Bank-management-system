@@ -1,0 +1,35 @@
+Client: line commands (VERB arg arg) over one TCP connection per session. The server answers each line with OK ... or ERR ...
+
+Global lock order (never take an earlier lock while holding a later one):
+  1. sessions_lock byte (login only)
+  2. users.bin table lock (the users append lock)
+  3. users.bin records, lowest id first
+  4. accounts.bin table lock, then account records, lowest id first
+  5. loans.bin records, lowest id first
+  6. append locks of transactions.bin and feedback.bin
+Lowest-id-first inside a file is just the same rule applied within one file.
+Any lookup that needs a lower lock is done before taking the higher one. Example: ASSIGN read-locks the employee's user record, then write-locks the loan.
+
+Timeouts: SO_RCVTIMEO makes a blocked read fail after N seconds. On EAGAIN, end_reason sends ERR session timed out, then the normal exit path runs: release the session lock, close the socket, exit. Only the wait for the client is timed, never a transaction.
+
+ClientHandler: handles only LOGIN, LOGOUT and QUIT, then dispatches by role. The role comes from users.bin, never from the client.
+
+session_revalidate: runs before every command after login. It takes a read lock on this user's record, does one pread, releases the lock, then checks is_active and role.
+If is_active is 0, the server replies ERR account deactivated, releases the session lock and disconnects.
+If the role changed, the session takes the new role immediately.
+Account status and account membership are NOT checked here. They are checked inside each transaction, under the account lock, so a close or a holder change can't race with a withdrawal.
+
+TxManager: a transfer logs before-images of both accounts, changes them, appends the transaction record, then commits. A crash before commit rolls everything back.
+Only records changed in place need before-images (users, accounts, loans). Append-only files (transactions, feedback) log APPEND with the old file size.
+
+Healing (a live transaction keeps its locks until commit, so if I just got a lock and the journal still shows an open transaction on that record, its owner is dead):
+  - heal_orphans runs right after every record lock, read or write. A reader that finds an orphan drops its read lock, takes the write lock, heals, then continues.
+  - Healing rolls back the WHOLE dead transaction, not just one record. The healer first releases its own lock, then locks every record of that transaction in global order, restores the images, writes ROLLBACK, unlocks, and re-takes its original lock.
+  - Taking an append lock heals the file first. A rolled-back APPEND truncates to old_size, which is only safe when nobody has appended after the dead process. Healing before anyone can append guarantees that.
+  - Any command that scans a file (history, search, feedback list, user list) calls heal_before_scan(file) first.
+
+Journal growth: every live transaction holds a shared lock on one byte of journal.bin (the gate) from begin to commit. After a commit, if journal.bin is over 1 MB, try a non-blocking exclusive lock on the gate. If it succeeds, nobody has an open transaction: run recover_all, then truncate the journal. If it fails, skip and try later. recover_all also runs once at startup before listening.
+
+LockManager: fcntl record locks. Read lock for balance and details, write lock for deposit, withdraw and transfer. The table lock is one extra byte past the end of the file. Open each data file once per process, because closing any descriptor of a file drops all of that process's locks on it.
+
+Session lock: one byte per user in sessions_lock. The OS releases it when the process dies. DELETEUSER never needs it, so a logged-in user can't block their own deletion.
